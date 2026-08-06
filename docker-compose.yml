@@ -1,0 +1,32 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ministore
+      POSTGRES_USER: ministore
+      POSTGRES_PASSWORD: ministore
+    ports:
+      - "5433:5432"
+    volumes:
+      - ministore_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ministore"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: postgres
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/ministore
+      SPRING_DATASOURCE_USERNAME: ministore
+      SPRING_DATASOURCE_PASSWORD: ministore
+    ports:
+      - "8081:8080"
+
+volumes:
+  ministore_pgdata:
