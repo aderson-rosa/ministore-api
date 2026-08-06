@@ -7,8 +7,9 @@ API REST de **e-commerce simplificado**: catálogo de produtos, **carrinho** (it
 ## 🧰 Tech Stack
 
 - **Java 17**
-- **Spring Boot 3** (Web, Data JPA, Validation)
+- **Spring Boot 3** (Web, Data JPA, Validation, AMQP)
 - **JPA / Hibernate**
+- **RabbitMQ** (Spring AMQP) — publicação e consumo de eventos de pedido (mensageria)
 - **PostgreSQL** (produção) · **H2** (execução local sem instalar nada)
 - **JUnit 5 + Mockito** (unitário) e **REST Assured** (integração ponta a ponta em servidor real)
 - **springdoc-openapi / Swagger UI**
@@ -63,24 +64,37 @@ Regras de negócio:
 - Um pedido valida o **estoque** de cada item; se faltar, retorna `422` sem alterar nada.
 - Ao confirmar, o **estoque é baixado** e o **total** é calculado a partir do preço atual dos produtos.
 
+## 📨 Mensageria (RabbitMQ)
+
+Ao criar um pedido, a aplicação **publica um evento `order.created`** no RabbitMQ, e um **consumer** processa esse evento de forma desacoplada (simulando notificação/faturamento/separação de estoque).
+
+- **Exchange:** `ministore.exchange` (tipo *topic*) · **Routing key:** `order.created` · **Fila:** `ministore.order-created.queue`
+- **Publicação resiliente:** se o broker estiver indisponível, o pedido **não é perdido** — o evento apenas não é enviado e a falha é logada.
+- Mensagens trafegam em **JSON** (`Jackson2JsonMessageConverter`).
+- Com `docker compose up`, sobe também o **painel de gestão** do RabbitMQ em `http://localhost:15672` (guest/guest), onde dá para ver as mensagens na fila.
+
+Fluxo: `POST /api/orders` → `OrderService` salva o pedido → `OrderEventPublisher` publica `order.created` → `OrderCreatedListener` consome e loga.
+
 ## 🧪 Testes
 
 ```bash
 mvn test
 ```
 
-- `OrderServiceTest` — regras de estoque e cálculo do total isolados com **Mockito**.
+- `OrderServiceTest` — regras de estoque, cálculo do total e publicação do evento, isolados com **Mockito**.
+- `OrderEventPublisherTest` — publicação no RabbitMQ e resiliência quando o broker está indisponível.
 - `MinistoreRestAssuredTest` — sobe a aplicação em porta real e testa o fluxo produto → pedido → baixa de estoque com **REST Assured**.
 
 ## 🗂️ Estrutura
 
 ```
 src/main/java/com/aderson/ministore
-├── config       # OpenAPI
+├── config       # OpenAPI e RabbitMQ (exchange, fila, binding)
 ├── controller   # Endpoints REST (produtos, pedidos)
 ├── domain       # Entidades JPA + repositórios (product, order)
 ├── dto          # Records de request/response
 ├── exception    # Tratamento global de erros
+├── messaging    # Evento, publisher e listener do RabbitMQ
 └── service      # Regras de negócio
 ```
 

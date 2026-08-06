@@ -2,6 +2,13 @@ spring:
   application:
     name: ministore-api
 
+  # Mensageria: RabbitMQ (suba com "docker compose up").
+  rabbitmq:
+    host: ${SPRING_RABBITMQ_HOST:localhost}
+    port: ${SPRING_RABBITMQ_PORT:5672}
+    username: ${SPRING_RABBITMQ_USERNAME:guest}
+    password: ${SPRING_RABBITMQ_PASSWORD:guest}
+
   # Perfil padrao: H2 em memoria (roda sem instalar nada).
   # Para Postgres, use o perfil "postgres" (SPRING_PROFILES_ACTIVE=postgres).
   datasource:

@@ -10,6 +10,8 @@ import com.aderson.ministore.dto.OrderItemRequest;
 import com.aderson.ministore.dto.OrderResponse;
 import com.aderson.ministore.exception.BusinessException;
 import com.aderson.ministore.exception.NotFoundException;
+import com.aderson.ministore.messaging.OrderCreatedEvent;
+import com.aderson.ministore.messaging.OrderEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -20,10 +22,14 @@ public class OrderService {
 
     private final OrderRepository orderRepository;
     private final ProductRepository productRepository;
+    private final OrderEventPublisher orderEventPublisher;
 
-    public OrderService(OrderRepository orderRepository, ProductRepository productRepository) {
+    public OrderService(OrderRepository orderRepository,
+                        ProductRepository productRepository,
+                        OrderEventPublisher orderEventPublisher) {
         this.orderRepository = orderRepository;
         this.productRepository = productRepository;
+        this.orderEventPublisher = orderEventPublisher;
     }
 
     @Transactional(readOnly = true)
@@ -56,6 +62,12 @@ public class OrderService {
             order.addItem(new OrderItem(product, itemRequest.quantity(), product.getPrice()));
         }
 
-        return OrderResponse.from(orderRepository.save(order));
+        Order saved = orderRepository.save(order);
+
+        // Publica o evento de pedido criado no RabbitMQ (mensageria)
+        orderEventPublisher.publishOrderCreated(new OrderCreatedEvent(
+                saved.getId(), saved.getTotal(), saved.getItems().size(), saved.getStatus().name()));
+
+        return OrderResponse.from(saved);
     }
 }

@@ -6,7 +6,9 @@ import io.restassured.http.ContentType;
 import io.restassured.path.json.config.JsonPathConfig;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import com.aderson.ministore.messaging.OrderEventPublisher;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.boot.test.web.server.LocalServerPort;
 
 import java.math.BigDecimal;
@@ -15,11 +17,17 @@ import static io.restassured.RestAssured.given;
 import static org.hamcrest.Matchers.comparesEqualTo;
 import static org.hamcrest.Matchers.equalTo;
 
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@SpringBootTest(
+        webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
+        properties = "spring.rabbitmq.listener.simple.auto-startup=false")
 class MinistoreRestAssuredTest {
 
     @LocalServerPort
     private int port;
+
+    // Mensageria mockada: o teste de API nao precisa de um broker RabbitMQ real.
+    @MockBean
+    private OrderEventPublisher orderEventPublisher;
 
     @BeforeEach
     void setUp() {

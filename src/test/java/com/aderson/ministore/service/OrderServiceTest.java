@@ -9,6 +9,7 @@ import com.aderson.ministore.dto.OrderItemRequest;
 import com.aderson.ministore.dto.OrderResponse;
 import com.aderson.ministore.exception.BusinessException;
 import com.aderson.ministore.exception.NotFoundException;
+import com.aderson.ministore.messaging.OrderEventPublisher;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -33,6 +34,9 @@ class OrderServiceTest {
     @Mock
     private ProductRepository productRepository;
 
+    @Mock
+    private OrderEventPublisher orderEventPublisher;
+
     @InjectMocks
     private OrderService orderService;
 
@@ -51,6 +55,7 @@ class OrderServiceTest {
         assertThat(response.items()).hasSize(1);
         assertThat(response.items().get(0).subtotal()).isEqualByComparingTo("100.00");
         verify(orderRepository).save(any(Order.class));
+        verify(orderEventPublisher).publishOrderCreated(any()); // evento publicado no RabbitMQ
     }
 
     @Test
