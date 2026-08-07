@@ -64,16 +64,21 @@ Regras de negócio:
 - Um pedido valida o **estoque** de cada item; se faltar, retorna `422` sem alterar nada.
 - Ao confirmar, o **estoque é baixado** e o **total** é calculado a partir do preço atual dos produtos.
 
-## 📨 Mensageria (RabbitMQ)
+## 📨 Mensageria (RabbitMQ) + confiabilidade
 
-Ao criar um pedido, a aplicação **publica um evento `order.created`** no RabbitMQ, e um **consumer** processa esse evento de forma desacoplada (simulando notificação/faturamento/separação de estoque).
+Ao criar um pedido, a aplicação emite o evento **`order.created`**, e um **consumer** o processa de forma desacoplada (simulando notificação/faturamento/separação de estoque).
 
 - **Exchange:** `ministore.exchange` (tipo *topic*) · **Routing key:** `order.created` · **Fila:** `ministore.order-created.queue`
-- **Publicação resiliente:** se o broker estiver indisponível, o pedido **não é perdido** — o evento apenas não é enviado e a falha é logada.
-- Mensagens trafegam em **JSON** (`Jackson2JsonMessageConverter`).
-- Com `docker compose up`, sobe também o **painel de gestão** do RabbitMQ em `http://localhost:15672` (guest/guest), onde dá para ver as mensagens na fila.
+- Mensagens em **JSON** (`Jackson2JsonMessageConverter`).
+- Com `docker compose up`, sobe também o **painel de gestão** do RabbitMQ em `http://localhost:15672` (guest/guest).
 
-Fluxo: `POST /api/orders` → `OrderService` salva o pedido → `OrderEventPublisher` publica `order.created` → `OrderCreatedListener` consome e loga.
+### Garantia de entrega: Transactional Outbox
+O evento **não é publicado direto** na criação do pedido. Ele é **gravado numa tabela de outbox (`outbox_events`) na MESMA transação do pedido** (atomicidade). Um relay agendado (`OutboxPublisher`) lê os pendentes e publica no RabbitMQ, marcando como enviados. Se o broker estiver **indisponível**, o evento **não se perde**: permanece `PENDING` e é reprocessado no próximo ciclo (entrega *at-least-once*).
+
+Fluxo: `POST /api/orders` → `OrderService` (transação: baixa estoque + grava outbox) → `OutboxPublisher` (relay) publica `order.created` → `OrderCreatedListener` consome.
+
+### Concorrência: lock pessimista no estoque
+A baixa de estoque usa **lock pessimista** (`SELECT ... FOR UPDATE`, via `@Lock(PESSIMISTIC_WRITE)`), serializando o acesso ao produto para **evitar race condition** e venda acima do estoque quando dois pedidos chegam simultaneamente para o mesmo item.
 
 ## 🧪 Testes
 
@@ -81,8 +86,9 @@ Fluxo: `POST /api/orders` → `OrderService` salva o pedido → `OrderEventPubli
 mvn test
 ```
 
-- `OrderServiceTest` — regras de estoque, cálculo do total e publicação do evento, isolados com **Mockito**.
-- `OrderEventPublisherTest` — publicação no RabbitMQ e resiliência quando o broker está indisponível.
+- `OrderServiceTest` — regras de estoque (com lock), cálculo do total e gravação do evento no outbox, isolados com **Mockito**.
+- `OrderEventPublisherTest` — publicação no RabbitMQ.
+- `OutboxPublisherTest` — relay do outbox: publica pendentes, marca como enviados e mantém pendente quando o broker falha.
 - `MinistoreRestAssuredTest` — sobe a aplicação em porta real e testa o fluxo produto → pedido → baixa de estoque com **REST Assured**.
 
 ## 🗂️ Estrutura
@@ -95,6 +101,7 @@ src/main/java/com/aderson/ministore
 ├── dto          # Records de request/response
 ├── exception    # Tratamento global de erros
 ├── messaging    # Evento, publisher e listener do RabbitMQ
+├── outbox       # Transactional Outbox (entidade, repositório e relay agendado)
 └── service      # Regras de negócio
 ```
 

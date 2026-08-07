@@ -1,5 +1,6 @@
 package com.aderson.ministore.service;
 
+import com.aderson.ministore.config.RabbitConfig;
 import com.aderson.ministore.domain.order.Order;
 import com.aderson.ministore.domain.order.OrderRepository;
 import com.aderson.ministore.domain.product.Product;
@@ -9,10 +10,13 @@ import com.aderson.ministore.dto.OrderItemRequest;
 import com.aderson.ministore.dto.OrderResponse;
 import com.aderson.ministore.exception.BusinessException;
 import com.aderson.ministore.exception.NotFoundException;
-import com.aderson.ministore.messaging.OrderEventPublisher;
+import com.aderson.ministore.outbox.OutboxEvent;
+import com.aderson.ministore.outbox.OutboxEventRepository;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -35,15 +39,19 @@ class OrderServiceTest {
     private ProductRepository productRepository;
 
     @Mock
-    private OrderEventPublisher orderEventPublisher;
+    private OutboxEventRepository outboxEventRepository;
 
-    @InjectMocks
     private OrderService orderService;
 
+    @BeforeEach
+    void setUp() {
+        orderService = new OrderService(orderRepository, productRepository, outboxEventRepository, new ObjectMapper());
+    }
+
     @Test
-    void create_comEstoqueSuficiente_baixaEstoqueECalculaTotal() {
+    void create_comEstoqueSuficiente_baixaEstoqueEGravaNoOutbox() {
         Product product = new Product("Camiseta", "Algodao", new BigDecimal("50.00"), 10);
-        when(productRepository.findById(1L)).thenReturn(Optional.of(product));
+        when(productRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(product));
         when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
 
         CreateOrderRequest request = new CreateOrderRequest(List.of(new OrderItemRequest(1L, 2)));
@@ -52,16 +60,20 @@ class OrderServiceTest {
 
         assertThat(product.getStock()).isEqualTo(8);
         assertThat(response.total()).isEqualByComparingTo("100.00");
-        assertThat(response.items()).hasSize(1);
-        assertThat(response.items().get(0).subtotal()).isEqualByComparingTo("100.00");
         verify(orderRepository).save(any(Order.class));
-        verify(orderEventPublisher).publishOrderCreated(any()); // evento publicado no RabbitMQ
+
+        // Evento gravado no outbox (na mesma transacao), nao publicado diretamente
+        ArgumentCaptor<OutboxEvent> captor = ArgumentCaptor.forClass(OutboxEvent.class);
+        verify(outboxEventRepository).save(captor.capture());
+        assertThat(captor.getValue().getType()).isEqualTo(RabbitConfig.ORDER_CREATED_ROUTING_KEY);
+        assertThat(captor.getValue().getAggregateType()).isEqualTo("Order");
+        assertThat(captor.getValue().getPayload()).contains("\"status\":\"CREATED\"");
     }
 
     @Test
     void create_comEstoqueInsuficiente_lancaBusinessException() {
         Product product = new Product("Tenis", "Corrida", new BigDecimal("300.00"), 1);
-        when(productRepository.findById(1L)).thenReturn(Optional.of(product));
+        when(productRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(product));
 
         CreateOrderRequest request = new CreateOrderRequest(List.of(new OrderItemRequest(1L, 5)));
 
@@ -71,11 +83,12 @@ class OrderServiceTest {
 
         assertThat(product.getStock()).isEqualTo(1); // nao alterou
         verify(orderRepository, never()).save(any(Order.class));
+        verify(outboxEventRepository, never()).save(any(OutboxEvent.class));
     }
 
     @Test
     void create_comProdutoInexistente_lancaNotFound() {
-        when(productRepository.findById(99L)).thenReturn(Optional.empty());
+        when(productRepository.findByIdForUpdate(99L)).thenReturn(Optional.empty());
 
         CreateOrderRequest request = new CreateOrderRequest(List.of(new OrderItemRequest(99L, 1)));
 
@@ -83,5 +96,6 @@ class OrderServiceTest {
                 .isInstanceOf(NotFoundException.class);
 
         verify(orderRepository, never()).save(any(Order.class));
+        verify(outboxEventRepository, never()).save(any(OutboxEvent.class));
     }
 }

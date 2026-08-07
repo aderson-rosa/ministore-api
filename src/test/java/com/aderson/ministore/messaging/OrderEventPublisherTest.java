@@ -11,7 +11,7 @@ import org.springframework.amqp.rabbit.core.RabbitTemplate;
 
 import java.math.BigDecimal;
 
-import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
@@ -38,7 +38,9 @@ class OrderEventPublisherTest {
     }
 
     @Test
-    void publishOrderCreated_quandoBrokerFalha_naoPropagaExcecao() {
+    void publishOrderCreated_quandoBrokerFalha_propagaExcecao() {
+        // Propaga a falha de proposito, para que o OutboxPublisher mantenha o evento
+        // pendente e o reprocesse depois (garantia de entrega).
         OrderCreatedEvent event = new OrderCreatedEvent(2L, new BigDecimal("50.00"), 1, "CREATED");
         doThrow(new AmqpException("broker indisponivel"))
                 .when(rabbitTemplate).convertAndSend(
@@ -46,7 +48,7 @@ class OrderEventPublisherTest {
                         eq(RabbitConfig.ORDER_CREATED_ROUTING_KEY),
                         eq(event));
 
-        // Resiliencia: a falha do broker nao pode derrubar a criacao do pedido.
-        assertThatCode(() -> publisher.publishOrderCreated(event)).doesNotThrowAnyException();
+        assertThatThrownBy(() -> publisher.publishOrderCreated(event))
+                .isInstanceOf(AmqpException.class);
     }
 }

@@ -1,5 +1,6 @@
 package com.aderson.ministore.service;
 
+import com.aderson.ministore.config.RabbitConfig;
 import com.aderson.ministore.domain.order.Order;
 import com.aderson.ministore.domain.order.OrderItem;
 import com.aderson.ministore.domain.order.OrderRepository;
@@ -11,7 +12,10 @@ import com.aderson.ministore.dto.OrderResponse;
 import com.aderson.ministore.exception.BusinessException;
 import com.aderson.ministore.exception.NotFoundException;
 import com.aderson.ministore.messaging.OrderCreatedEvent;
-import com.aderson.ministore.messaging.OrderEventPublisher;
+import com.aderson.ministore.outbox.OutboxEvent;
+import com.aderson.ministore.outbox.OutboxEventRepository;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -22,14 +26,17 @@ public class OrderService {
 
     private final OrderRepository orderRepository;
     private final ProductRepository productRepository;
-    private final OrderEventPublisher orderEventPublisher;
+    private final OutboxEventRepository outboxEventRepository;
+    private final ObjectMapper objectMapper;
 
     public OrderService(OrderRepository orderRepository,
                         ProductRepository productRepository,
-                        OrderEventPublisher orderEventPublisher) {
+                        OutboxEventRepository outboxEventRepository,
+                        ObjectMapper objectMapper) {
         this.orderRepository = orderRepository;
         this.productRepository = productRepository;
-        this.orderEventPublisher = orderEventPublisher;
+        this.outboxEventRepository = outboxEventRepository;
+        this.objectMapper = objectMapper;
     }
 
     @Transactional(readOnly = true)
@@ -49,7 +56,9 @@ public class OrderService {
         Order order = new Order();
 
         for (OrderItemRequest itemRequest : request.items()) {
-            Product product = productRepository.findById(itemRequest.productId())
+            // Lock pessimista: serializa o acesso ao produto para evitar race condition
+            // na baixa de estoque quando dois pedidos chegam ao mesmo tempo.
+            Product product = productRepository.findByIdForUpdate(itemRequest.productId())
                     .orElseThrow(() -> new NotFoundException("Produto nao encontrado: " + itemRequest.productId()));
 
             if (product.getStock() < itemRequest.quantity()) {
@@ -64,10 +73,22 @@ public class OrderService {
 
         Order saved = orderRepository.save(order);
 
-        // Publica o evento de pedido criado no RabbitMQ (mensageria)
-        orderEventPublisher.publishOrderCreated(new OrderCreatedEvent(
-                saved.getId(), saved.getTotal(), saved.getItems().size(), saved.getStatus().name()));
+        // Transactional Outbox: grava o evento na MESMA transacao do pedido.
+        // O OutboxPublisher publica no RabbitMQ depois, garantindo que o evento
+        // nao se perca mesmo que o broker esteja indisponivel neste momento.
+        OrderCreatedEvent event = new OrderCreatedEvent(
+                saved.getId(), saved.getTotal(), saved.getItems().size(), saved.getStatus().name());
+        outboxEventRepository.save(OutboxEvent.of(
+                "Order", saved.getId(), RabbitConfig.ORDER_CREATED_ROUTING_KEY, toJson(event)));
 
         return OrderResponse.from(saved);
+    }
+
+    private String toJson(OrderCreatedEvent event) {
+        try {
+            return objectMapper.writeValueAsString(event);
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException("Falha ao serializar o evento do pedido", e);
+        }
     }
 }

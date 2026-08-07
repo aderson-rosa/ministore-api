@@ -19,7 +19,10 @@ import static org.hamcrest.Matchers.equalTo;
 
 @SpringBootTest(
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-        properties = "spring.rabbitmq.listener.simple.auto-startup=false")
+        properties = {
+                "spring.rabbitmq.listener.simple.auto-startup=false",
+                "outbox.publisher.enabled=false"
+        })
 class MinistoreRestAssuredTest {
 
     @LocalServerPort
