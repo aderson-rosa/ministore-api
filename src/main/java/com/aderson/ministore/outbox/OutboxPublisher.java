@@ -2,9 +2,11 @@ package com.aderson.ministore.outbox;
 
 import com.aderson.ministore.messaging.OrderCreatedEvent;
 import com.aderson.ministore.messaging.OrderEventPublisher;
+import com.aderson.ministore.observability.Correlation;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -41,6 +43,11 @@ public class OutboxPublisher {
     public void publishPending() {
         List<OutboxEvent> pending = outboxEventRepository.findTop50ByStatusOrderByCreatedAtAsc(OutboxStatus.PENDING);
         for (OutboxEvent event : pending) {
+            // Restaura o correlation id capturado na criacao, para o log e o header
+            // da mensagem carregarem o mesmo id (sobrevive ao boundary assincrono).
+            if (event.getCorrelationId() != null) {
+                MDC.put(Correlation.MDC_KEY, event.getCorrelationId());
+            }
             try {
                 OrderCreatedEvent payload = objectMapper.readValue(event.getPayload(), OrderCreatedEvent.class);
                 orderEventPublisher.publishOrderCreated(payload);
@@ -50,6 +57,8 @@ public class OutboxPublisher {
                 // Mantem PENDING e sera reprocessado no proximo ciclo (nao perde o evento).
                 log.warn("Outbox: falha ao publicar evento id={}, sera reprocessado. Causa: {}",
                         event.getId(), ex.getMessage());
+            } finally {
+                MDC.remove(Correlation.MDC_KEY);
             }
         }
     }

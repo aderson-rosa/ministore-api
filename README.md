@@ -10,6 +10,7 @@ API REST de **e-commerce simplificado**: catálogo de produtos, **carrinho** (it
 - **Spring Boot 3** (Web, Data JPA, Validation, AMQP)
 - **JPA / Hibernate**
 - **RabbitMQ** (Spring AMQP) — publicação e consumo de eventos de pedido (mensageria)
+- **Observabilidade:** Micrometer + Actuator + **Prometheus** (métricas) e correlation id ponta a ponta (MDC)
 - **PostgreSQL** (produção) · **H2** (execução local sem instalar nada)
 - **JUnit 5 + Mockito** (unitário) e **REST Assured** (integração ponta a ponta em servidor real)
 - **springdoc-openapi / Swagger UI**
@@ -80,6 +81,12 @@ Fluxo: `POST /api/orders` → `OrderService` (transação: baixa estoque + grava
 ### Concorrência: lock pessimista no estoque
 A baixa de estoque usa **lock pessimista** (`SELECT ... FOR UPDATE`, via `@Lock(PESSIMISTIC_WRITE)`), serializando o acesso ao produto para **evitar race condition** e venda acima do estoque quando dois pedidos chegam simultaneamente para o mesmo item.
 
+## 🔭 Observabilidade
+
+- **Correlation ID ponta a ponta:** um `X-Correlation-Id` é gerado por requisição (ou reaproveitado do header), colocado no **MDC** (todos os logs do fluxo carregam o id) e devolvido na resposta. Ele é **persistido no outbox** e propagado para o **header da mensagem** ao publicar; o consumer o extrai de volta para o MDC. Assim o rastreamento **sobrevive ao boundary assíncrono e a retries/reprocessamento**.
+- **Métricas:** via **Micrometer + Actuator**, expostas em `GET /actuator/metrics` (inclui o contador `ministore.orders.created`), prontas para exportação a **Prometheus** e dashboards no **Grafana** (`/actuator/prometheus` quando o registry Prometheus está ativo).
+- **Health check:** `GET /actuator/health`.
+
 ## 🧪 Testes
 
 ```bash
@@ -100,9 +107,10 @@ src/main/java/com/aderson/ministore
 ├── domain       # Entidades JPA + repositórios (product, order)
 ├── dto          # Records de request/response
 ├── exception    # Tratamento global de erros
-├── messaging    # Evento, publisher e listener do RabbitMQ
-├── outbox       # Transactional Outbox (entidade, repositório e relay agendado)
-└── service      # Regras de negócio
+├── messaging      # Evento, publisher e listener do RabbitMQ
+├── observability  # Correlation id (filtro HTTP) e constantes
+├── outbox         # Transactional Outbox (entidade, repositório e relay agendado)
+└── service        # Regras de negócio
 ```
 
 ## 📄 Licença

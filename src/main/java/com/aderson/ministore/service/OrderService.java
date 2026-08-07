@@ -12,10 +12,13 @@ import com.aderson.ministore.dto.OrderResponse;
 import com.aderson.ministore.exception.BusinessException;
 import com.aderson.ministore.exception.NotFoundException;
 import com.aderson.ministore.messaging.OrderCreatedEvent;
+import com.aderson.ministore.observability.Correlation;
 import com.aderson.ministore.outbox.OutboxEvent;
 import com.aderson.ministore.outbox.OutboxEventRepository;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.micrometer.core.instrument.MeterRegistry;
+import org.slf4j.MDC;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -28,15 +31,18 @@ public class OrderService {
     private final ProductRepository productRepository;
     private final OutboxEventRepository outboxEventRepository;
     private final ObjectMapper objectMapper;
+    private final MeterRegistry meterRegistry;
 
     public OrderService(OrderRepository orderRepository,
                         ProductRepository productRepository,
                         OutboxEventRepository outboxEventRepository,
-                        ObjectMapper objectMapper) {
+                        ObjectMapper objectMapper,
+                        MeterRegistry meterRegistry) {
         this.orderRepository = orderRepository;
         this.productRepository = productRepository;
         this.outboxEventRepository = outboxEventRepository;
         this.objectMapper = objectMapper;
+        this.meterRegistry = meterRegistry;
     }
 
     @Transactional(readOnly = true)
@@ -78,8 +84,11 @@ public class OrderService {
         // nao se perca mesmo que o broker esteja indisponivel neste momento.
         OrderCreatedEvent event = new OrderCreatedEvent(
                 saved.getId(), saved.getTotal(), saved.getItems().size(), saved.getStatus().name());
+        String correlationId = MDC.get(Correlation.MDC_KEY);
         outboxEventRepository.save(OutboxEvent.of(
-                "Order", saved.getId(), RabbitConfig.ORDER_CREATED_ROUTING_KEY, toJson(event)));
+                "Order", saved.getId(), RabbitConfig.ORDER_CREATED_ROUTING_KEY, correlationId, toJson(event)));
+
+        meterRegistry.counter("ministore.orders.created").increment();
 
         return OrderResponse.from(saved);
     }

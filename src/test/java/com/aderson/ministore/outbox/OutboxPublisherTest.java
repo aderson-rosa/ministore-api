@@ -37,7 +37,7 @@ class OutboxPublisherTest {
     private OutboxEvent pendingEvent() throws Exception {
         String payload = objectMapper.writeValueAsString(
                 new OrderCreatedEvent(1L, new BigDecimal("100.00"), 2, "CREATED"));
-        return OutboxEvent.of("Order", 1L, "order.created", payload);
+        return OutboxEvent.of("Order", 1L, "order.created", "test-correlation-id", payload);
     }
 
     @Test

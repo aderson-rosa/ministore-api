@@ -33,3 +33,18 @@ spring:
 springdoc:
   swagger-ui:
     path: /swagger-ui.html
+
+# Observabilidade: expoe health e metricas Prometheus em /actuator/prometheus
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  metrics:
+    tags:
+      application: ministore-api
+
+# Correlation id aparece em todos os logs (via MDC)
+logging:
+  pattern:
+    level: "%5p [cid=%X{correlationId:-}]"

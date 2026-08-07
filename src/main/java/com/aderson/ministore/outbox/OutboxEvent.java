@@ -30,6 +30,10 @@ public class OutboxEvent {
     @Column(nullable = false, length = 4000)
     private String payload;
 
+    // Correlation id capturado no momento da criacao; sobrevive ao boundary
+    // assincrono (poller/retry) e e propagado para o header da mensagem.
+    private String correlationId;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 10)
     private OutboxStatus status = OutboxStatus.PENDING;
@@ -42,15 +46,16 @@ public class OutboxEvent {
     protected OutboxEvent() {
     }
 
-    private OutboxEvent(String aggregateType, Long aggregateId, String type, String payload) {
+    private OutboxEvent(String aggregateType, Long aggregateId, String type, String correlationId, String payload) {
         this.aggregateType = aggregateType;
         this.aggregateId = aggregateId;
         this.type = type;
+        this.correlationId = correlationId;
         this.payload = payload;
     }
 
-    public static OutboxEvent of(String aggregateType, Long aggregateId, String type, String payload) {
-        return new OutboxEvent(aggregateType, aggregateId, type, payload);
+    public static OutboxEvent of(String aggregateType, Long aggregateId, String type, String correlationId, String payload) {
+        return new OutboxEvent(aggregateType, aggregateId, type, correlationId, payload);
     }
 
     public void markSent() {
@@ -76,6 +81,10 @@ public class OutboxEvent {
 
     public String getPayload() {
         return payload;
+    }
+
+    public String getCorrelationId() {
+        return correlationId;
     }
 
     public OutboxStatus getStatus() {

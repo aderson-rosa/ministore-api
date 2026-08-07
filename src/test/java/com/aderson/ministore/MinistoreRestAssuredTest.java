@@ -15,7 +15,9 @@ import java.math.BigDecimal;
 
 import static io.restassured.RestAssured.given;
 import static org.hamcrest.Matchers.comparesEqualTo;
+import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.equalTo;
+import static org.hamcrest.Matchers.notNullValue;
 
 @SpringBootTest(
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
@@ -81,5 +83,20 @@ class MinistoreRestAssuredTest {
                 .post("/api/orders")
                 .then()
                 .statusCode(422);
+    }
+
+    @Test
+    void observabilidade_devolveCorrelationIdEExpoeMetricas() {
+        // Correlation id gerado e devolvido no header da resposta
+        given()
+                .when().get("/api/products")
+                .then().statusCode(200)
+                .header("X-Correlation-Id", notNullValue());
+
+        // Endpoint de metricas do Actuator (Micrometer) disponivel
+        given()
+                .when().get("/actuator/metrics")
+                .then().statusCode(200)
+                .body(containsString("jvm.memory.used"));
     }
 }

@@ -13,6 +13,7 @@ import com.aderson.ministore.exception.NotFoundException;
 import com.aderson.ministore.outbox.OutboxEvent;
 import com.aderson.ministore.outbox.OutboxEventRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -45,7 +46,8 @@ class OrderServiceTest {
 
     @BeforeEach
     void setUp() {
-        orderService = new OrderService(orderRepository, productRepository, outboxEventRepository, new ObjectMapper());
+        orderService = new OrderService(orderRepository, productRepository, outboxEventRepository,
+                new ObjectMapper(), new SimpleMeterRegistry());
     }
 
     @Test

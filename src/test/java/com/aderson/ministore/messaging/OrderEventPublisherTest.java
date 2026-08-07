@@ -7,11 +7,13 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.amqp.AmqpException;
+import org.springframework.amqp.core.MessagePostProcessor;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 
 import java.math.BigDecimal;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
@@ -34,7 +36,8 @@ class OrderEventPublisherTest {
         verify(rabbitTemplate).convertAndSend(
                 eq(RabbitConfig.EXCHANGE),
                 eq(RabbitConfig.ORDER_CREATED_ROUTING_KEY),
-                eq(event));
+                eq(event),
+                any(MessagePostProcessor.class));
     }
 
     @Test
@@ -46,7 +49,8 @@ class OrderEventPublisherTest {
                 .when(rabbitTemplate).convertAndSend(
                         eq(RabbitConfig.EXCHANGE),
                         eq(RabbitConfig.ORDER_CREATED_ROUTING_KEY),
-                        eq(event));
+                        eq(event),
+                        any(MessagePostProcessor.class));
 
         assertThatThrownBy(() -> publisher.publishOrderCreated(event))
                 .isInstanceOf(AmqpException.class);
