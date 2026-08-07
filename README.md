@@ -84,7 +84,8 @@ A baixa de estoque usa **lock pessimista** (`SELECT ... FOR UPDATE`, via `@Lock(
 ## 🔭 Observabilidade
 
 - **Correlation ID ponta a ponta:** um `X-Correlation-Id` é gerado por requisição (ou reaproveitado do header), colocado no **MDC** (todos os logs do fluxo carregam o id) e devolvido na resposta. Ele é **persistido no outbox** e propagado para o **header da mensagem** ao publicar; o consumer o extrai de volta para o MDC. Assim o rastreamento **sobrevive ao boundary assíncrono e a retries/reprocessamento**.
-- **Métricas:** via **Micrometer + Actuator**, expostas em `GET /actuator/metrics` (inclui o contador `ministore.orders.created`), prontas para exportação a **Prometheus** e dashboards no **Grafana** (`/actuator/prometheus` quando o registry Prometheus está ativo).
+- **Métricas:** via **Micrometer + Actuator**, com o contador `ministore.orders.placed` (pedidos criados), expostas em `GET /actuator/metrics` e em `GET /actuator/prometheus` (formato de scraping).
+- **Stack de monitoramento pronto:** `docker compose up` sobe também **Prometheus** (`:9090`) raspando a API e **Grafana** (`:3000`, admin/admin) com o datasource e o dashboard *"MiniStore Observability"* já provisionados.
 - **Health check:** `GET /actuator/health`.
 
 ## 🧪 Testes

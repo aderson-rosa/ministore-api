@@ -6,7 +6,7 @@ services:
       POSTGRES_USER: ministore
       POSTGRES_PASSWORD: ministore
     ports:
-      - "5433:5432"
+      - "5434:5432"
     volumes:
       - ministore_pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -44,6 +44,28 @@ services:
       SPRING_RABBITMQ_HOST: rabbitmq
     ports:
       - "8081:8080"
+
+  prometheus:
+    image: prom/prometheus:latest
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"     # UI do Prometheus
+    depends_on:
+      - api
+
+  grafana:
+    image: grafana/grafana:latest
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3000:3000"     # Grafana (admin/admin), dashboard "MiniStore Observability" ja provisionado
+    depends_on:
+      - prometheus
 
 volumes:
   ministore_pgdata:

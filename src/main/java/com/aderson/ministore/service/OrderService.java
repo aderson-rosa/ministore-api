@@ -88,7 +88,7 @@ public class OrderService {
         outboxEventRepository.save(OutboxEvent.of(
                 "Order", saved.getId(), RabbitConfig.ORDER_CREATED_ROUTING_KEY, correlationId, toJson(event)));
 
-        meterRegistry.counter("ministore.orders.created").increment();
+        meterRegistry.counter("ministore.orders.placed").increment();
 
         return OrderResponse.from(saved);
     }
